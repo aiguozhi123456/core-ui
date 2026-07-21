@@ -57,6 +57,9 @@ public:
     bool OnMouseUp(const MouseEvent& e) override;
     bool OnKeyDown(int vk) override;
     D2D1_SIZE_F SizeHint() const override;
+    // Returns the outer height after wrapping to an allocated outer width.
+    // VBox uses this after resolving cross-axis constraints.
+    float HeightForWidth(float width) const override;
 
 private:
     std::wstring text_;
@@ -476,7 +479,9 @@ public:
     void SetContent(WidgetPtr content);
 
     float ScrollY() const { return scrollY_; }
-    void SetScrollY(float y) { scrollY_ = y; ClampScroll(); }
+    float MaxScrollY() const;
+    void SetScrollY(float y);
+    void ScrollToEnd();
 
     void OnDraw(Renderer& r) override;
     void DrawTree(Renderer& r) override;
@@ -492,6 +497,9 @@ private:
     WidgetPtr content_;
     float scrollY_ = 0;
     float contentHeight_ = 0;
+    enum class PendingScroll { None, Position, End };
+    float pendingScrollY_ = 0;
+    PendingScroll pendingScroll_ = PendingScroll::None;
     bool draggingThumb_ = false;
     bool hoveringBar_ = false;
     float dragStartY_ = 0;
@@ -502,6 +510,8 @@ private:
 
     float ThumbWidth() const { return (hoveringBar_ || draggingThumb_) ? kThumbWide : kThumbThin; }
     void ClampScroll();
+    void CancelPendingScroll();
+    float ViewportTop() const { return rect.top + padT; }
     float VisibleHeight() const;
     D2D1_RECT_F ThumbRect() const;
 };

@@ -198,6 +198,10 @@ ui_tab_set_active(tabs, 0);
 
 // ScrollView
 ui_scroll_set_content(sv, content);
+ui_scroll_get_y(sv);             // current vertical offset in DIP
+ui_scroll_get_max_y(sv);         // maximum clamped offset after layout
+ui_scroll_set_y(sv, 120.0f);     // clamps after reactive content is laid out
+ui_scroll_to_end(sv);            // resolves against the next measured layout
 
 // TitleBar
 ui_titlebar_set_title(tb, L"Title");
@@ -226,6 +230,10 @@ ui_dialog_hide(dlg, win);
 // 点击
 void on_click(UiWidget w, void* ud) { }
 ui_widget_on_click(btn, on_click, data);
+
+// TextInput Enter submit; coexists with UIX @submit
+void on_submit(UiWidget w, void* ud) { }
+ui_text_input_on_submit(input, on_submit, data);
 
 // CheckBox / Toggle 值变化
 void on_value(UiWidget w, int value, void* ud) { }

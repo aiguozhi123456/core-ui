@@ -857,6 +857,12 @@ UI_API void ui_tab_set_active(UiWidget tab_control, int index);
 /* ScrollView                                                         */
 /* ------------------------------------------------------------------ */
 UI_API void ui_scroll_set_content(UiWidget scroll_view, UiWidget content);
+/* Vertical offsets are in DIP. Setters clamp after the next layout, so they
+ * are safe to call immediately after reactive content changes. */
+UI_API float ui_scroll_get_y(UiWidget scroll_view);
+UI_API float ui_scroll_get_max_y(UiWidget scroll_view);
+UI_API void  ui_scroll_set_y(UiWidget scroll_view, float y);
+UI_API void  ui_scroll_to_end(UiWidget scroll_view);
 
 /* ------------------------------------------------------------------ */
 /* Widget callbacks                                                   */
@@ -865,6 +871,7 @@ typedef void (*UiClickCallback)(UiWidget widget, void* userdata);
 typedef void (*UiValueCallback)(UiWidget widget, int value, void* userdata);
 typedef void (*UiFloatCallback)(UiWidget widget, float value, void* userdata);
 typedef void (*UiSelectionCallback)(UiWidget widget, int index, void* userdata);
+typedef void (*UiSubmitCallback)(UiWidget widget, void* userdata);
 
 UI_API void ui_widget_set_tooltip(UiWidget w, const wchar_t* text);
 
@@ -940,6 +947,9 @@ UI_API void ui_widget_on_mouse_wheel(UiWidget w,
                                        void* userdata);
 
 UI_API void ui_widget_on_click(UiWidget w, UiClickCallback cb, void* userdata);
+/* TextInput only. Fires once when Enter is pressed while focused and enabled.
+ * This native callback coexists with a UIX @submit handler. cb=NULL unbinds. */
+UI_API void ui_text_input_on_submit(UiWidget w, UiSubmitCallback cb, void* userdata);
 UI_API void ui_checkbox_on_changed(UiWidget w, UiValueCallback cb, void* userdata);
 UI_API void ui_slider_on_changed(UiWidget w, UiFloatCallback cb, void* userdata);
 UI_API void ui_toggle_on_changed(UiWidget w, UiValueCallback cb, void* userdata);

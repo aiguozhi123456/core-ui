@@ -241,6 +241,10 @@ D2D1_SIZE_F LabelWidget::SizeHint() const {
      * 返自然宽, 受约束 (fixedW / flex shrink / 父级显式 width) 的 label 仍
      * 然在画的时候按真实分配宽度 wrap. */
     float w = estW;
+    return {w + padL + padR, HeightForWidth(fixedW)};
+}
+
+float LabelWidget::HeightForWidth(float width) const {
     /* line-height 决定单行 label 高度 (build 92, L20):
      *   - lineHeightPx_     >0: CSS "Npx" 直接用
      *   - lineHeightRatio_  >0: CSS unitless (1.3 = 1.3×fontSize)
@@ -250,14 +254,14 @@ D2D1_SIZE_F LabelWidget::SizeHint() const {
                 : (lineHeightRatio_ > 0.0f) ? (lineHeightRatio_ * fontSize_)
                                             : (fontSize_ * 1.3f);
     float h = fixedH > 0 ? fixedH : lineH;
-    if (wrap_ && fixedW > 0) {
+    if (wrap_ && width > 0) {
         /* 仅 fixedW 显式约束时 SizeHint 能可靠预测 wrap 后的高度. 没 fixedW
          * 时父宽未知 (要等 DoLayout 分配 rect 才知道), SizeHint 给单行高;
          * 父级层 layout 时若分配 rect.width < intrinsic, draw 时按 rect
          * 宽度 wrap, 可能视觉溢出 — 这条 limitation 由调用方负责 (给
          * fixedW 或父级提供足够 cross-axis 空间), 与之前用 parent_->rect
          * 的方案相比换来"absolute / shrink-to-fit 不死锁"的更大好处. */
-        float availW = fixedW - padL - padR;
+        float availW = width - padL - padR;
         if (availW > 10.0f) {
             extern MeasureContext* g_activeMeasureContext;
             if (g_activeMeasureContext) {
@@ -278,7 +282,7 @@ D2D1_SIZE_F LabelWidget::SizeHint() const {
     }
     // CSS padding 撑大 label 整体尺寸（badge / pill / chip 用），文字仍画
     // 在 textRect = rect 减 padding 内。
-    return {w + padL + padR, h + padT + padB};
+    return h + padT + padB;
 }
 
 // ---- Button ----
@@ -1119,7 +1123,12 @@ bool TextInputWidget::OnKeyDown(int vk) {
     // ENTER fires the form-submit hook (Vue's `@submit.prevent`-ish — single-
     // line input has no use for a literal newline, so submit takes priority).
     if (vk == VK_RETURN) {
-        if (onSubmitHook) onSubmitHook();
+        // Snapshot both handlers before dispatch. Either callback may update
+        // reactive state and remount this input; each listener still runs once.
+        auto uixSubmit = onSubmitHook;
+        auto nativeSubmit = onNativeSubmitHook;
+        if (uixSubmit) uixSubmit();
+        if (nativeSubmit) nativeSubmit();
         return true;
     }
 
@@ -2125,52 +2134,80 @@ void ScrollViewWidget::SetContent(WidgetPtr content) {
 }
 
 float ScrollViewWidget::VisibleHeight() const {
-    return rect.bottom - rect.top;
+    return std::max(0.0f, (rect.bottom - padB) - ViewportTop());
+}
+
+float ScrollViewWidget::MaxScrollY() const {
+    return std::max(0.0f, contentHeight_ - VisibleHeight());
+}
+
+void ScrollViewWidget::SetScrollY(float y) {
+    if (!std::isfinite(y)) return;
+    pendingScrollY_ = std::max(0.0f, y);
+    pendingScroll_ = PendingScroll::Position;
+    scrollY_ = std::clamp(pendingScrollY_, 0.0f, MaxScrollY());
+    ui::RequestLayout();
+}
+
+void ScrollViewWidget::ScrollToEnd() {
+    if (draggingThumb_) return;
+    pendingScroll_ = PendingScroll::End;
+    scrollY_ = MaxScrollY();
+    ui::RequestLayout();
 }
 
 bool ScrollViewWidget::NeedsScrollbar() const {
-    return contentHeight_ > VisibleHeight() + 1.0f;
+    return VisibleHeight() > 0.0f && contentHeight_ > VisibleHeight() + 1.0f;
 }
 
 void ScrollViewWidget::ClampScroll() {
-    float maxScroll = std::max(0.0f, contentHeight_ - VisibleHeight());
-    scrollY_ = std::clamp(scrollY_, 0.0f, maxScroll);
+    scrollY_ = std::clamp(scrollY_, 0.0f, MaxScrollY());
+}
+
+void ScrollViewWidget::CancelPendingScroll() {
+    pendingScroll_ = PendingScroll::None;
 }
 
 D2D1_RECT_F ScrollViewWidget::ThumbRect() const {
     if (!NeedsScrollbar()) return {};
     float visH = VisibleHeight();
     float ratio = visH / contentHeight_;
-    float thumbH = std::max(20.0f, visH * ratio);
+    float thumbH = std::min(visH, std::max(20.0f, visH * ratio));
     float maxScroll = contentHeight_ - visH;
     float scrollRatio = maxScroll > 0 ? scrollY_ / maxScroll : 0;
-    float thumbY = rect.top + scrollRatio * (visH - thumbH);
+    float thumbY = ViewportTop() + scrollRatio * (visH - thumbH);
     float tw = ThumbWidth();
     float inset = 2.0f;  // avoid resize border
     return {rect.right - tw - inset, thumbY, rect.right - inset, thumbY + thumbH};
 }
 
 void ScrollViewWidget::DoLayout() {
-    if (!content_) return;
+    if (!content_) {
+        contentHeight_ = 0;
+        scrollY_ = 0;
+        pendingScroll_ = PendingScroll::None;
+        return;
+    }
 
     /* Build 110 (L29 follow-up): 应用 padding 给 content 区域. 之前
      * visW/visH/content.rect 直接用 sv.rect, padL/padT/padR/padB 字段被
      * 忽略, .uix 写 `padding: 24px 28px` 视觉上没起作用 — caller 的内容
      * 贴 ScrollView 边. 改成跟 VBox/HBox 同款行为: content 起点偏 padding,
      * 可用宽高扣 padding. */
-    float visW = (rect.right - padR) - (rect.left + padL);
-    float visH = (rect.bottom - padB) - (rect.top + padT);
+    float visW = std::max(0.0f, (rect.right - padR) - (rect.left + padL));
+    float visH = VisibleHeight();
+    float viewportTop = ViewportTop();
 
     // First pass: layout content at full height to measure actual needed height
     // Give it a tall rect so VBox can place all children without compression
     float estimatedH = std::max(content_->SizeHint().height, visH);
-    content_->rect = {rect.left + padL, rect.top + padT,
+    content_->rect = {rect.left + padL, viewportTop,
                         rect.left + padL + visW,
-                        rect.top + padT + estimatedH};
+                        viewportTop + estimatedH};
     content_->DoLayout();
 
     // Measure actual content height from children bounds (EXCLUDING content_ itself)
-    float maxBottom = rect.top + padT;
+    float maxBottom = viewportTop;
     std::function<void(Widget*)> measure = [&](Widget* w) {
         if (!w->visible) return;
         if (w->rect.bottom > maxBottom) maxBottom = w->rect.bottom;
@@ -2178,19 +2215,23 @@ void ScrollViewWidget::DoLayout() {
     };
     // 只 measure 子元素的 bounds，不包含 content_ 自己的 rect.bottom（那是 estimatedH，非真实内容）
     for (auto& c : content_->Children()) measure(c.get());
-    /* contentHeight_ 含 padT 但不含 padB — 内容 + 上 padding 是滚动可视范围,
-     * 下 padding 通过 visH 已经扣过 (caller 想要的"末尾留白"自然出现). */
-    contentHeight_ = std::max(maxBottom - rect.top, visH);
+    contentHeight_ = std::max(maxBottom - viewportTop, visH);
 
 
     // Scrollbar overlays content (absolute positioning, no space reserved)
-    float cw = visW;
+    if (pendingScroll_ == PendingScroll::End) {
+        scrollY_ = MaxScrollY();
+        pendingScroll_ = PendingScroll::None;
+    } else if (pendingScroll_ == PendingScroll::Position) {
+        scrollY_ = pendingScrollY_;
+        pendingScroll_ = PendingScroll::None;
+    }
     ClampScroll();
 
     // Final layout with correct scroll offset and width
-    content_->rect = {rect.left + padL, rect.top + padT - scrollY_,
-                        rect.left + padL + cw,
-                        rect.top + padT - scrollY_ + contentHeight_};
+    content_->rect = {rect.left + padL, viewportTop - scrollY_,
+                        rect.left + padL + visW,
+                        viewportTop - scrollY_ + contentHeight_};
     content_->DoLayout();
 }
 
@@ -2216,8 +2257,8 @@ void ScrollViewWidget::DrawTree(Renderer& r) {
     // Draw background + scrollbar
     OnDraw(r);
     paintedOnce_ = true;   // L45: mount-phase transition gate
-    // Draw content inside clip region — only once
-    r.PushClip(rect);
+    // Draw content inside the same padded viewport used for layout and scroll.
+    r.PushClip({ContentLeft(), ViewportTop(), ContentRight(), rect.bottom - padB});
     if (content_) content_->DrawTree(r);
     r.PopClip();
     // Skip Widget::DrawTree's default children iteration (content is already drawn)
@@ -2225,6 +2266,7 @@ void ScrollViewWidget::DrawTree(Renderer& r) {
 
 bool ScrollViewWidget::OnMouseWheel(const MouseEvent& e) {
     if (!Contains(e.x, e.y)) return false;
+    CancelPendingScroll();
     // 内容完全适配视口时不消耗滚轮事件，让父容器处理
     if (!NeedsScrollbar()) return false;
     scrollY_ -= e.delta * 0.3f;
@@ -2234,8 +2276,10 @@ bool ScrollViewWidget::OnMouseWheel(const MouseEvent& e) {
 }
 
 bool ScrollViewWidget::OnMouseDown(const MouseEvent& e) {
-    if (NeedsScrollbar() && e.x >= rect.right - kBarSpace - 2 && e.x < rect.right - 2) {
+    if (NeedsScrollbar() && e.x >= rect.right - kBarSpace - 2 && e.x < rect.right - 2 &&
+        e.y >= ViewportTop() && e.y < ViewportTop() + VisibleHeight()) {
         // Click anywhere in scrollbar track area
+        CancelPendingScroll();
         draggingThumb_ = true;
         dragStartY_ = e.y;
         // Jump scroll to click position
@@ -2244,8 +2288,8 @@ bool ScrollViewWidget::OnMouseDown(const MouseEvent& e) {
         float visH = VisibleHeight();
         float trackRange = visH - thumbH;
         if (trackRange > 0 && (e.y < thumb.top || e.y > thumb.bottom)) {
-            float targetY = e.y - thumbH / 2 - rect.top;
-            float maxScroll = contentHeight_ - visH;
+            float targetY = e.y - thumbH / 2 - ViewportTop();
+            float maxScroll = MaxScrollY();
             scrollY_ = targetY / (visH - thumbH) * maxScroll;
             ClampScroll();
             DoLayout();
@@ -2259,13 +2303,14 @@ bool ScrollViewWidget::OnMouseDown(const MouseEvent& e) {
 bool ScrollViewWidget::OnMouseMove(const MouseEvent& e) {
     hovered = Contains(e.x, e.y);
     if (draggingThumb_) {
+        CancelPendingScroll();
         float visH = VisibleHeight();
         float ratio = visH / contentHeight_;
-        float thumbH = std::max(20.0f, visH * ratio);
+        float thumbH = std::min(visH, std::max(20.0f, visH * ratio));
         float trackRange = visH - thumbH;
         if (trackRange > 0) {
             float dy = e.y - dragStartY_;
-            float maxScroll = contentHeight_ - visH;
+            float maxScroll = MaxScrollY();
             scrollY_ = dragStartScroll_ + dy * (maxScroll / trackRange);
             ClampScroll();
             DoLayout();
@@ -2273,7 +2318,8 @@ bool ScrollViewWidget::OnMouseMove(const MouseEvent& e) {
         return true;
     }
     // Detect hover over scrollbar area for visual width change (no layout impact)
-    hoveringBar_ = NeedsScrollbar() && hovered && e.x >= rect.right - kBarSpace - 2 && e.x < rect.right - 2;
+    hoveringBar_ = NeedsScrollbar() && hovered && e.x >= rect.right - kBarSpace - 2 && e.x < rect.right - 2 &&
+                   e.y >= ViewportTop() && e.y < ViewportTop() + VisibleHeight();
     return hovered;
 }
 

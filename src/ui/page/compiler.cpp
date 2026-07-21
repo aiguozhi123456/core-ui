@@ -746,6 +746,7 @@ void CompileElement(CompilerCtx& ctx,
                 pm.id  = p->id;
                 pm.classes = p->classList;
                 for (const auto& c : p->dynamicClasses) pm.classes.push_back(c);
+                pm.stateBits = p->CurrentStateBits();
                 chain.push_back(std::move(pm));
             }
             for (size_t i = 0; i < chain.size(); ++i) {

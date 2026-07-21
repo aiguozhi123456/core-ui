@@ -1877,6 +1877,26 @@ UI_API void ui_scroll_set_content(UiWidget scroll_view, UiWidget content) {
     if (sv && contentWidget) sv->SetContent(contentWidget);
 }
 
+UI_API float ui_scroll_get_y(UiWidget scroll_view) {
+    auto* sv = As<ui::ScrollViewWidget>(scroll_view);
+    return sv ? sv->ScrollY() : 0.0f;
+}
+
+UI_API float ui_scroll_get_max_y(UiWidget scroll_view) {
+    auto* sv = As<ui::ScrollViewWidget>(scroll_view);
+    return sv ? sv->MaxScrollY() : 0.0f;
+}
+
+UI_API void ui_scroll_set_y(UiWidget scroll_view, float y) {
+    auto* sv = As<ui::ScrollViewWidget>(scroll_view);
+    if (sv) sv->SetScrollY(y);
+}
+
+UI_API void ui_scroll_to_end(UiWidget scroll_view) {
+    auto* sv = As<ui::ScrollViewWidget>(scroll_view);
+    if (sv) sv->ScrollToEnd();
+}
+
 // ================================================================
 // Widget callbacks
 // ================================================================
@@ -1896,6 +1916,16 @@ UI_API void ui_widget_on_click(UiWidget w, UiClickCallback cb, void* userdata) {
     // widget instance with the same id. Widgets without an id fall through
     // to the legacy "lives only on this instance" behaviour.
     if (!p->id.empty()) Ctx().SetClickCallback(p->id, std::move(fn));
+}
+
+UI_API void ui_text_input_on_submit(UiWidget w, UiSubmitCallback cb, void* userdata) {
+    auto* input = As<ui::TextInputWidget>(w);
+    if (!input) return;
+    if (!cb) {
+        input->onNativeSubmitHook = nullptr;
+        return;
+    }
+    input->onNativeSubmitHook = [cb, userdata, w]() { cb(w, userdata); };
 }
 
 UI_API void ui_checkbox_on_changed(UiWidget w, UiValueCallback cb, void* userdata) {

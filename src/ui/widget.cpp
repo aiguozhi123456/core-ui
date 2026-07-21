@@ -558,6 +558,23 @@ void VBoxWidget::DoLayout() {
         ResolvePercentSizing(child, cw, totalH);
     }
 
+    auto measuredHeight = [&](Widget* child) {
+        if (child->fixedH > 0) return child->fixedH;
+        LayoutAlign align = (child->alignSelfOverride < 0)
+            ? crossAlign_
+            : static_cast<LayoutAlign>(child->alignSelfOverride);
+        bool intrinsic = (child->display == Display::Inline ||
+                          child->display == Display::InlineBlock) &&
+                         child->alignSelfOverride < 0;
+        float availW = cw - child->marginL - child->marginR;
+        float width = child->fixedW > 0
+            ? std::clamp(child->fixedW, child->minW, child->maxW)
+            : (align == LayoutAlign::Stretch && !intrinsic)
+                ? std::clamp(availW, child->minW, child->maxW)
+                : std::clamp(child->SizeHint().width, child->minW, child->maxW);
+        return child->HeightForWidth(width);
+    };
+
     // First pass: measure fixed children, sum flex weights
     float usedH = 0;
     float totalFlex = 0;
@@ -566,7 +583,7 @@ void VBoxWidget::DoLayout() {
         if (child->expanding && child->fixedH <= 0) {
             totalFlex += child->flex;
         } else {
-            float h = child->fixedH > 0 ? child->fixedH : child->SizeHint().height;
+            float h = measuredHeight(child);
             if (h <= 0) h = 24.0f;
             h = std::clamp(h, child->minH, child->maxH);
             usedH += h;
@@ -583,7 +600,7 @@ void VBoxWidget::DoLayout() {
         if (child->expanding && child->fixedH <= 0) {
             h = totalFlex > 0 ? remaining * (child->flex / totalFlex) : 0;
         } else {
-            h = child->fixedH > 0 ? child->fixedH : child->SizeHint().height;
+            h = measuredHeight(child);
             if (h <= 0) h = 24.0f;
         }
         heights[i] = std::clamp(h, child->minH, child->maxH);
@@ -680,6 +697,37 @@ void VBoxWidget::DoLayout() {
         child->rect = {x, y2, x + w, y2 + h};
         child->DoLayout();
     }
+}
+
+float VBoxWidget::HeightForWidth(float width) const {
+    if (fixedH > 0) return fixedH;
+
+    const float contentW = std::max(0.0f, width - padL - padR);
+    float height = padT + padB;
+    int count = 0;
+    for (const auto& childPtr : children_) {
+        Widget* child = childPtr.get();
+        if (!child->visible || child->positionAbsolute) continue;
+
+        LayoutAlign align = (child->alignSelfOverride < 0)
+            ? crossAlign_
+            : static_cast<LayoutAlign>(child->alignSelfOverride);
+        bool intrinsic = (child->display == Display::Inline ||
+                          child->display == Display::InlineBlock) &&
+                         child->alignSelfOverride < 0;
+        const float availW = contentW - child->marginL - child->marginR;
+        const float childW = child->fixedW > 0
+            ? std::clamp(child->fixedW, child->minW, child->maxW)
+            : (align == LayoutAlign::Stretch && !intrinsic)
+                ? std::clamp(availW, child->minW, child->maxW)
+                : std::clamp(child->SizeHint().width, child->minW, child->maxW);
+        float childH = child->fixedH > 0 ? child->fixedH : child->HeightForWidth(childW);
+        if (childH <= 0) childH = 24.0f;
+        height += std::clamp(childH, child->minH, child->maxH) + child->marginT + child->marginB;
+        ++count;
+    }
+    if (count > 1) height += gap_ * (count - 1);
+    return height;
 }
 
 D2D1_SIZE_F VBoxWidget::SizeHint() const {

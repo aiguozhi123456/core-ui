@@ -355,6 +355,9 @@ public:
     // while focused. Other widgets ignore it; pages can listen on the form
     // wrapper element itself by hooking directly through @submit.
     std::function<void()> onSubmitHook;
+    // Native TextInput submit registration. Kept separate so the C API does
+    // not replace a UIX @submit handler on the same input.
+    std::function<void()> onNativeSubmitHook;
     // Focus transitions. Fired by SetFocused() when state actually flips —
     // safe to invoke on a non-focusable widget that gets a stale call.
     std::function<void()> onFocusHook;
@@ -393,6 +396,8 @@ public:
     virtual bool OnKeyDown(int vk)   { (void)vk; return false; }
     virtual bool OnKeyChar(wchar_t c){ (void)c;  return false; }
     virtual D2D1_SIZE_F SizeHint() const { return {fixedW, fixedH}; }
+    // Conservative intrinsic-height fallback for a resolved outer width.
+    virtual float HeightForWidth(float width) const { (void)width; return SizeHint().height; }
 
     // ---- Focus ----
     bool IsFocused() const { return focused_; }
@@ -454,6 +459,7 @@ public:
     WidgetPtr MainJustify(LayoutJustify j){ mainJustify_ = j; return shared_from_this(); }
     void DoLayout() override;
     D2D1_SIZE_F SizeHint() const override;
+    float HeightForWidth(float width) const override;
 };
 
 class UI_API HBoxWidget : public Widget {
