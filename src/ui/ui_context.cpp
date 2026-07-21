@@ -160,7 +160,10 @@ UiWindowImpl* Context::FindWindowByWidget(Widget* w) {
 }
 
 void Context::RemoveWindow(uint64_t id) {
-    windows_.erase(id);
+    auto it = windows_.find(id);
+    if (it == windows_.end()) return;
+    auto dyingWindow = std::move(it->second);
+    windows_.erase(it);
 }
 
 void Context::InvalidateAllWindows() {

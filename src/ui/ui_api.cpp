@@ -2256,6 +2256,26 @@ UI_API void ui_scroll_set_content(UiWidget scroll_view, UiWidget content) {
     if (sv && contentWidget) sv->SetContent(contentWidget);
 }
 
+UI_API float ui_scroll_get_y(UiWidget scroll_view) {
+    auto* sv = As<ui::ScrollViewWidget>(scroll_view);
+    return sv ? sv->ScrollY() : 0.0f;
+}
+
+UI_API float ui_scroll_get_max_y(UiWidget scroll_view) {
+    auto* sv = As<ui::ScrollViewWidget>(scroll_view);
+    return sv ? sv->MaxScrollY() : 0.0f;
+}
+
+UI_API void ui_scroll_set_y(UiWidget scroll_view, float y) {
+    auto* sv = As<ui::ScrollViewWidget>(scroll_view);
+    if (sv) sv->SetScrollY(y);
+}
+
+UI_API void ui_scroll_to_end(UiWidget scroll_view) {
+    auto* sv = As<ui::ScrollViewWidget>(scroll_view);
+    if (sv) sv->ScrollToEnd();
+}
+
 // ================================================================
 // Widget callbacks
 // ================================================================

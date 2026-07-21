@@ -709,7 +709,9 @@ void PageState::ApplyBindingToWidget(Widget* w, const std::string& prop, const u
             // this the widget's color/cursor stay stuck at the previous state
             // until some unrelated event triggers a recomputeStyle.
             std::function<void(Widget*)> refresh = [&](Widget* x) {
-                if (x->recomputeStyle) x->recomputeStyle(x->lastStateBits);
+                const uint32_t stateBits = x->CurrentStateBits();
+                if (x->recomputeStyle) x->recomputeStyle(stateBits);
+                x->lastStateBits = stateBits;
                 for (auto& c : x->Children()) refresh(c.get());
             };
             refresh(w);

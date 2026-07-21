@@ -57,6 +57,9 @@ public:
     bool OnMouseUp(const MouseEvent& e) override;
     bool OnKeyDown(int vk) override;
     D2D1_SIZE_F SizeHint() const override;
+    // Returns the outer height after wrapping to an allocated outer width.
+    // VBox uses this after resolving cross-axis constraints.
+    float HeightForWidth(float width) const override;
 
 private:
     std::wstring text_;
@@ -587,14 +590,12 @@ public:
     void SetContent(WidgetPtr content);
 
     float ScrollY() const { return scrollY_; }
-    /* 走与鼠标滚动同一条纯偏移路径 (build 285) —— 此前只改字段不动 rect,
-     * 内容要等下一次全局布局才归位, 长列表里那次布局就是每帧 O(n) 的来源。 */
-    void SetScrollY(float y) {
-        const float oldScroll = scrollY_;
-        scrollY_ = y;
-        ClampScroll();
-        ApplyScrollDelta_(oldScroll);
-    }
+    /* 外部程序化滚动走 pending 延迟路径 (chat 用法): 响应式内容刚变化、
+     * 还没布局时调用也安全, 位置在下一次 DoLayout 解析。与鼠标滚动的
+     * 纯偏移路径 (ApplyScrollDelta_, build 285) 互不干扰。 */
+    float MaxScrollY() const;
+    void SetScrollY(float y);
+    void ScrollToEnd();
 
     void OnDraw(Renderer& r) override;
     void DrawTree(Renderer& r) override;
@@ -610,6 +611,9 @@ private:
     WidgetPtr content_;
     float scrollY_ = 0;
     float contentHeight_ = 0;
+    enum class PendingScroll { None, Position, End };
+    float pendingScrollY_ = 0;
+    PendingScroll pendingScroll_ = PendingScroll::None;
     bool draggingThumb_ = false;
     bool hoveringBar_ = false;
     float dragStartY_ = 0;
@@ -620,6 +624,10 @@ private:
 
     float ThumbWidth() const { return (hoveringBar_ || draggingThumb_) ? kThumbWide : kThumbThin; }
     void ClampScroll();
+    void CancelPendingScroll();
+    float ViewportTop() const { return rect.top + padT; }
+    float VisibleHeight() const;
+    D2D1_RECT_F ThumbRect() const;
 
     /* 纯滚动路径 (build 285): 只有 scrollY_ 变了、内容一个字没动时用。
      * DoLayout() 会跑两遍 content_->DoLayout() (一遍量高度一遍定位) 外加一次
@@ -629,8 +637,6 @@ private:
      * 调用方: 三个鼠标 handler (滚轮 / 拖 thumb / 点轨道跳转) —— 它们按定义
      * 只改偏移。内容变化仍然走完整的 DoLayout()。 */
     void ApplyScrollDelta_(float oldScrollY);
-    float VisibleHeight() const;
-    D2D1_RECT_F ThumbRect() const;
 };
 
 // ---- RadioButton ----

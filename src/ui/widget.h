@@ -450,6 +450,8 @@ public:
     // Requires an active measure context; return false when unknown.
     virtual bool GetCaretRect(D2D1_RECT_F* out) const { (void)out; return false; }
     virtual D2D1_SIZE_F SizeHint() const { return {fixedW, fixedH}; }
+    // Conservative intrinsic-height fallback for a resolved outer width.
+    virtual float HeightForWidth(float width) const { (void)width; return SizeHint().height; }
 
     // ---- Focus ----
     bool IsFocused() const { return focused_; }
@@ -517,6 +519,7 @@ public:
     WidgetPtr MainJustify(LayoutJustify j){ mainJustify_ = j; return shared_from_this(); }
     void DoLayout() override;
     D2D1_SIZE_F SizeHint() const override;
+    float HeightForWidth(float width) const override;
 };
 
 class UI_API HBoxWidget : public Widget {

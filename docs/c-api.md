@@ -198,6 +198,10 @@ ui_tab_set_active(tabs, 0);
 
 // ScrollView
 ui_scroll_set_content(sv, content);
+ui_scroll_get_y(sv);             // current vertical offset in DIP
+ui_scroll_get_max_y(sv);         // maximum clamped offset after layout
+ui_scroll_set_y(sv, 120.0f);     // clamps after reactive content is laid out
+ui_scroll_to_end(sv);            // resolves against the next measured layout
 
 // TitleBar
 ui_titlebar_set_title(tb, L"Title");

@@ -3340,9 +3340,14 @@ bool UiWindowImpl::DispatchKeyDown(int vk) {
     }
 
     // 7. Forward to focused widget's generic OnKeyDown
-    if (focusedWidget_ && focusedWidget_->OnKeyDown(vk)) {
-        InvalidateNow();
-        return true;
+    if (focusedWidget_) {
+        // A key handler may synchronously unmount its own focused widget.
+        // Keep it alive through dispatch, matching the mouse-up guard.
+        WidgetPtr keepAlive = focusedWidget_->shared_from_this();
+        if (keepAlive->OnKeyDown(vk)) {
+            InvalidateNow();
+            return true;
+        }
     }
 
     return false;

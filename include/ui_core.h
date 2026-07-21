@@ -1056,6 +1056,12 @@ UI_API void ui_tab_set_active(UiWidget tab_control, int index);
 /* ScrollView                                                         */
 /* ------------------------------------------------------------------ */
 UI_API void ui_scroll_set_content(UiWidget scroll_view, UiWidget content);
+/* Vertical offsets are in DIP. Setters clamp after the next layout, so they
+ * are safe to call immediately after reactive content changes. */
+UI_API float ui_scroll_get_y(UiWidget scroll_view);
+UI_API float ui_scroll_get_max_y(UiWidget scroll_view);
+UI_API void  ui_scroll_set_y(UiWidget scroll_view, float y);
+UI_API void  ui_scroll_to_end(UiWidget scroll_view);
 
 /* ------------------------------------------------------------------ */
 /* Widget callbacks                                                   */
