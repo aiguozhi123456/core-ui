@@ -175,6 +175,11 @@ private:
     void NotifyResizeCallback(UINT width, UINT height);
     bool HasFocusedTextInput() const;
     void UpdateCaretBlinkTimer();
+    /* Tell the active IME where the focused caret is (client px). Without this,
+     * composition/candidate UI defaults to client (0,0) on custom-drawn inputs. */
+    void UpdateImeCaretPosition();
+    /* Resolve focused TextInput/TextArea caret in DIP; binds measureContext_. */
+    bool GetFocusedImeCaretDip(float& outX, float& outY, float& outH);
     void StartWindowOpenAnimation();
     void StartWindowCloseAnimation();
     void UnregisterRenderWindow();

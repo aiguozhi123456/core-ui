@@ -1200,6 +1200,34 @@ D2D1_SIZE_F TextInputWidget::SizeHint() const {
     return {fixedW > 0 ? fixedW : 200.0f, fixedH > 0 ? fixedH : 32.0f};  // WinUI 3: MinHeight=32
 }
 
+bool TextInputWidget::GetImeCaretDip(MeasureContext* measure, float& outX, float& outY, float& outH) const {
+    /* Match OnDraw caret geometry: 11px left pad, scrollX_, vertical inset 5. */
+    float fontSize = (css.fontSize > 0) ? css.fontSize : theme::kFontSizeNormal;
+    float textX = rect.left + 11.0f - scrollX_;
+    float cursorX = textX;
+    if (measure && !text_.empty() && cursorPos_ > 0) {
+        int pos = cursorPos_;
+        if (pos > (int)text_.size()) pos = (int)text_.size();
+        std::wstring before = text_.substr(0, pos);
+        cursorX = textX + measure->MeasureTextWidth(before, fontSize, nullptr);
+    } else if (text_.empty()) {
+        cursorX = rect.left + 11.0f;
+    } else if (!measure && cursorPos_ > 0) {
+        /* No measure context: still place near field so IME is not at (0,0). */
+        cursorX = rect.left + 11.0f;
+    }
+    float cy1 = rect.top + 5.0f;
+    float cy2 = rect.bottom - 5.0f;
+    if (cy2 <= cy1) {
+        cy1 = rect.top;
+        cy2 = rect.bottom;
+    }
+    outX = cursorX;
+    outY = cy1;
+    outH = std::max(1.0f, cy2 - cy1);
+    return rect.right > rect.left && rect.bottom > rect.top;
+}
+
 // ---- TextArea ----
 
 UINT TextAreaWidget::EffectiveCaretBlinkMs() {
@@ -1790,6 +1818,23 @@ bool TextAreaWidget::OnKeyDown(int vk) {
 
 D2D1_SIZE_F TextAreaWidget::SizeHint() const {
     return {fixedW > 0 ? fixedW : 300.0f, fixedH > 0 ? fixedH : 150.0f};
+}
+
+bool TextAreaWidget::GetImeCaretDip(MeasureContext* measure, float& outX, float& outY, float& outH) const {
+    float fontSize = (css.fontSize > 0) ? css.fontSize : theme::kFontSizeNormal;
+    if (measure) EnsureLayout(*measure, fontSize);
+    float x = 0, y = 0, h = 0;
+    if (CaretXYForPos(cursorPos_, x, y, h)) {
+        outX = x;
+        outY = y;
+        outH = h > 0 ? h : std::max(1.0f, layoutLineHeight_);
+        return true;
+    }
+    /* Layout not warm yet — still report field origin so IME is not at (0,0). */
+    outX = rect.left + kPad;
+    outY = rect.top + kPad;
+    outH = std::max(1.0f, fontSize * 1.3f);
+    return rect.right > rect.left && rect.bottom > rect.top;
 }
 
 void ComboBoxWidget::OnDraw(Renderer& r) {

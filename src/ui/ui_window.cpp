@@ -10,6 +10,7 @@
 #include "render_thread.h"
 #include <windowsx.h>
 #include <dwmapi.h>
+#include <imm.h>
 #include <shellapi.h>
 #include <wrl/client.h>
 #include <wincodec.h>
@@ -22,6 +23,7 @@
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "imm32.lib")
 
 #if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0A00
 static inline UINT GetDpiForWindow(HWND hwnd) {
@@ -1669,8 +1671,40 @@ LRESULT UiWindowImpl::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
         if (focusedWidget_) {
             ActiveMeasureContextScope measureScope(measureContext_, renderer_);
             if (focusedWidget_->OnKeyChar((wchar_t)wParam)) {
+                UpdateImeCaretPosition();
                 InvalidateNow();
                 return 0;
+            }
+        }
+        break;
+
+    case WM_IME_STARTCOMPOSITION:
+    case WM_IME_COMPOSITION:
+        /* Keep composition/candidate windows on the focused caret. Default
+         * DefWindowProc still runs so the IME can process the composition. */
+        UpdateImeCaretPosition();
+        break;
+
+    case WM_IME_REQUEST:
+        if (wParam == IMR_QUERYCHARPOSITION && lParam) {
+            auto* info = reinterpret_cast<IMECHARPOSITION*>(lParam);
+            float dipX = 0, dipY = 0, dipH = 0;
+            /* Same measure binding as UpdateImeCaretPosition — unbound
+             * MeasureContext returns 0 text widths and misplaces the caret. */
+            if (GetFocusedImeCaretDip(dipX, dipY, dipH) && hwnd_) {
+                POINT pt = {
+                    (LONG)std::lround(dipX * dpiScale_),
+                    (LONG)std::lround(dipY * dpiScale_)
+                };
+                ClientToScreen(hwnd_, &pt);
+                info->pt.x = pt.x;
+                info->pt.y = pt.y;
+                info->cLineHeight = (UINT)std::max(1, (int)std::lround(dipH * dpiScale_));
+                RECT rc{};
+                GetClientRect(hwnd_, &rc);
+                MapWindowPoints(hwnd_, nullptr, reinterpret_cast<LPPOINT>(&rc), 2);
+                info->rcDocument = rc;
+                return TRUE;
             }
         }
         break;
@@ -1680,8 +1714,8 @@ LRESULT UiWindowImpl::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
         /* L96: IME(中文等)激活、正在处理该键时, Windows 把 wParam 设成
          * VK_PROCESSKEY(0xE5), 真实键拿不到 → key 消费者(如快捷键捕获)记成
          * 0xE5 显示"?"。从 lParam 的扫描码反查真实 VK(MapVirtualKey 走扫描码、
-         * IME 无关、user32 已链接, 不引 imm32)。IME 文字输入走 WM_CHAR/
-         * WM_IME_CHAR 另一条路, 不受此影响。 */
+         * IME 无关、user32)。IME 文字输入走 WM_CHAR/WM_IME_CHAR；候选窗位置
+         * 另由 UpdateImeCaretPosition (imm32) 维护。 */
         if (vk == VK_PROCESSKEY) {
             UINT sc = (UINT)((lParam >> 16) & 0xFF);
             UINT real = MapVirtualKeyW(sc, MAPVK_VSC_TO_VK);
@@ -2665,6 +2699,8 @@ void UiWindowImpl::OnMouseDown(float x, float y) {
         // OnMouseMove for the rationale (subclasses don't all forward).
         if (hit->onMouseDownHook) hit->onMouseDownHook(e);
         hit->OnMouseDown(e);
+        /* Click may place caret inside TextInput/TextArea — refresh IME. */
+        UpdateImeCaretPosition();
     }
     UpdateCaretBlinkTimer();
     InvalidateNow();
@@ -2959,6 +2995,8 @@ bool UiWindowImpl::DispatchKeyDown(int vk) {
         // Keep it alive through dispatch, matching the mouse-up guard.
         WidgetPtr keepAlive = focusedWidget_->shared_from_this();
         if (keepAlive->OnKeyDown(vk)) {
+            /* Arrow/home/end/delete move the caret — refresh IME position. */
+            UpdateImeCaretPosition();
             InvalidateNow();
             return true;
         }
@@ -3173,6 +3211,50 @@ void UiWindowImpl::UpdateCaretBlinkTimer() {
     }
 }
 
+bool UiWindowImpl::GetFocusedImeCaretDip(float& outX, float& outY, float& outH) {
+    if (!focusedWidget_) return false;
+    /* Bind renderer so MeasureTextWidth / CreateTextLayout work outside paint. */
+    measureContext_.BindRenderer(&renderer_);
+    if (auto* ti = dynamic_cast<TextInputWidget*>(focusedWidget_)) {
+        return ti->GetImeCaretDip(&measureContext_, outX, outY, outH);
+    }
+    if (auto* ta = dynamic_cast<TextAreaWidget*>(focusedWidget_)) {
+        return ta->GetImeCaretDip(&measureContext_, outX, outY, outH);
+    }
+    return false;
+}
+
+void UiWindowImpl::UpdateImeCaretPosition() {
+    if (!hwnd_ || !focusedWidget_) return;
+
+    float dipX = 0, dipY = 0, dipH = 0;
+    if (!GetFocusedImeCaretDip(dipX, dipY, dipH)) return;
+
+    HIMC himc = ImmGetContext(hwnd_);
+    if (!himc) return;
+
+    POINT pt = {
+        (LONG)std::lround(dipX * dpiScale_),
+        (LONG)std::lround(dipY * dpiScale_)
+    };
+    LONG lineH = (LONG)std::max(1, (int)std::lround(dipH * dpiScale_));
+
+    COMPOSITIONFORM cf{};
+    cf.dwStyle = CFS_POINT;
+    cf.ptCurrentPos = pt;
+    ImmSetCompositionWindow(himc, &cf);
+
+    CANDIDATEFORM cand{};
+    cand.dwIndex = 0;
+    cand.dwStyle = CFS_CANDIDATEPOS;
+    cand.ptCurrentPos = pt;
+    /* Prefer candidate below the caret line when the IME honors CFS_EXCLUDE. */
+    cand.rcArea = { pt.x, pt.y, pt.x + 1, pt.y + lineH };
+    ImmSetCandidateWindow(himc, &cand);
+
+    ImmReleaseContext(hwnd_, himc);
+}
+
 // ---- Focus management ----
 
 void UiWindowImpl::SetFocus(Widget* w) {
@@ -3191,6 +3273,7 @@ void UiWindowImpl::SetFocus(Widget* w) {
         if (auto* ta = dynamic_cast<TextAreaWidget*>(w)) { ta->focused = true; ta->ResetCaretBlink(); }
     }
     UpdateCaretBlinkTimer();
+    UpdateImeCaretPosition();
 }
 
 void UiWindowImpl::ClearFocus() {

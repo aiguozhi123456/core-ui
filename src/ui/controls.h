@@ -275,6 +275,10 @@ public:
     bool OnKeyDown(int vk) override;
     D2D1_SIZE_F SizeHint() const override;
 
+    /* DIP caret origin for ImmSetCompositionWindow / candidate positioning.
+     * measure may be null; then falls back to empty-field left padding. */
+    bool GetImeCaretDip(MeasureContext* measure, float& outX, float& outY, float& outH) const;
+
     bool focused = false;
     bool readOnly = false;
     std::function<bool(wchar_t)> inputFilter;
@@ -326,6 +330,10 @@ public:
     bool OnKeyChar(wchar_t ch) override;
     bool OnKeyDown(int vk) override;
     D2D1_SIZE_F SizeHint() const override;
+
+    /* DIP caret origin for Imm composition / candidate windows. measure used
+     * to rebuild IDWriteTextLayout when dirty; may be null if layout is warm. */
+    bool GetImeCaretDip(MeasureContext* measure, float& outX, float& outY, float& outH) const;
 
     bool focused = false;
     bool readOnly = false;

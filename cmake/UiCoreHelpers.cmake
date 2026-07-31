@@ -23,7 +23,7 @@ set(UI_CORE_HELPERS_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "")
 set(UI_CORE_STATIC_SYSTEM_LIBS
     user32 gdi32 shell32 ole32
     d2d1 d3d11 dxgi dxguid dwrite dwmapi uxtheme
-    windowscodecs gdiplus shlwapi
+    windowscodecs gdiplus shlwapi imm32
     CACHE STRING "System libs required when linking core-ui statically")
 
 # 一行接入 lib/static/core-ui.lib：自动加链接、系统库、UI_CORE_STATIC 宏。

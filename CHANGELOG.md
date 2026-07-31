@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.7.0 build 254 - IME composition caret position
+
+### Input / IME
+
+Custom-drawn `TextInput` / `TextArea` now report caret DIP coordinates to the
+active IME via `ImmSetCompositionWindow` / `ImmSetCandidateWindow`, and answer
+`IMR_QUERYCHARPOSITION`. Without this, Chinese (and other) IME composition and
+candidate windows defaulted to client `(0,0)` — typically the top-left of the
+screen — while committed characters still arrived through `WM_CHAR`.
+
+Position updates on focus, caret move (keys / click), composition start, and
+after character commit. `IMR_QUERYCHARPOSITION` and Imm updates share
+`GetFocusedImeCaretDip`, which binds the window `MeasureContext` to the
+renderer so caret X is measured correctly outside paint. Links `imm32`.
+
 ## 1.7.0 build 253 - Opacity layer shadow bounds
 
 ### Rendering

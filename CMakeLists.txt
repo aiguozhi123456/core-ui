@@ -130,7 +130,7 @@ set(UI_CORE_SOURCES
     src/ui/page/svg_widget.cpp
 )
 
-set(UI_CORE_SYSTEM_LIBS d2d1 d3d11 dxgi dxguid dwrite dwmapi uxtheme windowscodecs shlwapi gdiplus)
+set(UI_CORE_SYSTEM_LIBS d2d1 d3d11 dxgi dxguid dwrite dwmapi uxtheme windowscodecs shlwapi gdiplus imm32)
 
 if(WIN32)
     function(ui_core_add_version_resource target file_desc internal_name original_name file_type)
