@@ -2137,7 +2137,7 @@ bool TabControlWidget::OnMouseDown(const MouseEvent& e) {
     int idx = TabHitTest(e.x, e.y);
     if (idx >= 0 && idx != activeIndex_) {
         SetActiveIndex(idx);
-        DoLayout();
+        ui::RequestLayout();  // relayout under measure scope (see ScrollView::OnMouseWheel)
         return true;
     }
     return false;
@@ -2316,7 +2316,11 @@ bool ScrollViewWidget::OnMouseWheel(const MouseEvent& e) {
     if (!NeedsScrollbar()) return false;
     scrollY_ -= e.delta * 0.3f;
     ClampScroll();
-    DoLayout();
+    // Request, do not DoLayout: a direct DoLayout here runs outside the
+    // ActiveMeasureContextScope (only LayoutRoot sets it), so wrap-label
+    // HeightForWidth sees a null measure context and collapses multi-line
+    // text to a single line -> chat bubbles overlap after scrolling.
+    ui::RequestLayout();
     return true;
 }
 
@@ -2337,7 +2341,7 @@ bool ScrollViewWidget::OnMouseDown(const MouseEvent& e) {
             float maxScroll = MaxScrollY();
             scrollY_ = targetY / (visH - thumbH) * maxScroll;
             ClampScroll();
-            DoLayout();
+            ui::RequestLayout();  // see OnMouseWheel: relayout must run under measure scope
         }
         dragStartScroll_ = scrollY_;
         return true;
@@ -2358,7 +2362,7 @@ bool ScrollViewWidget::OnMouseMove(const MouseEvent& e) {
             float maxScroll = MaxScrollY();
             scrollY_ = dragStartScroll_ + dy * (maxScroll / trackRange);
             ClampScroll();
-            DoLayout();
+            ui::RequestLayout();  // see OnMouseWheel: relayout must run under measure scope
         }
         return true;
     }
@@ -4353,7 +4357,7 @@ bool SplitterWidget::OnMouseMove(const MouseEvent& e) {
         float newTop = e.y - dragOffset_ - cy;
         ratio_ = std::clamp(newTop / (ch - barSize_), minR, maxR);
     }
-    DoLayout();
+    ui::RequestLayout();  // relayout under measure scope (see ScrollView::OnMouseWheel)
     return true;
 }
 
@@ -4948,7 +4952,7 @@ void FlyoutWidget::Show(Widget* anchor) {
     open_ = true;
     visible = true;
     flyoutRect_ = ComputeRect();
-    DoLayout();
+    ui::RequestLayout();  // relayout under measure scope (see ScrollView::OnMouseWheel)
 }
 
 void FlyoutWidget::Hide() {

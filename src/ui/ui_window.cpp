@@ -2852,7 +2852,6 @@ void UiWindowImpl::OnMouseWheel(float x, float y, int delta) {
             else if (auto* sv = dynamic_cast<ScrollViewWidget*>(w)) {
                 if (sv->visible) {
                     handled = sv->OnMouseWheel(e);
-                    if (handled) sv->DoLayout();
                 }
             }
         }

@@ -2631,7 +2631,6 @@ UI_API int ui_debug_text_set(UiWidget w, const wchar_t* text) {
 UI_API int ui_debug_scroll_set(UiWidget w, float y) {
     auto* sv = As<ui::ScrollViewWidget>(w); if (!sv) return -1;
     sv->SetScrollY(y);
-    sv->DoLayout();
     return 0;
 }
 
