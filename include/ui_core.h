@@ -137,6 +137,16 @@ typedef struct UiWindowConfig {
      * x/y/width/height 在 start_maximized=1 时仍要填 — 那是用户双击 titlebar
      * 还原后的位置/尺寸, lib 不会丢弃. */
     int start_maximized;
+    /* 透窗模式 (translucent window): 1 = 窗口以 WS_EX_NOREDIRECTIONBITMAP +
+     * DirectComposition (pre-multiplied alpha, RenderSurfaceKind::
+     * LayeredComposition) 呈现, 每帧以 {0,0,0,0} 清屏, 开/关场的
+     * WS_EX_LAYERED 淡入淡出跳过 (与 NOREDIRECTIONBITMAP 冲突, 创建入口
+     * 自动强制 skip_animation). 必须在创建时设定 — 渲染面种类创建后不切换.
+     * caller 负责自己在 HWND 上打 DWM 亚克力/mica (DwmSetWindowAttribute /
+     * SetWindowCompositionAttribute); 不打的话透出的是纯黑. 运行期可用
+     * ui_window_set_translucent(win, 0) 退回不透明清屏 (DComp 表面保留,
+     * 内容全不透明时视觉等同 hwnd swapchain). */
+    int translucent;
 } UiWindowConfig;
 
 /* ------------------------------------------------------------------ */
@@ -1424,6 +1434,14 @@ UI_API int   ui_window_is_frameless(UiWindow win);
          避免 SetWindowPos 扩大窗口时的背景色闪烁）
    mode=1 要求 widget 覆盖整个客户区，否则会看到前一帧残留像素。 */
 UI_API void  ui_window_set_background_mode(UiWindow win, int mode);
+
+/* 透窗模式运行期开关（仅"关"方向有意义）：
+     enable == 0 → 恢复主题色不透明清屏（DComp 表面保留，内容全不透明时
+                   视觉等同普通 hwnd swapchain，用于 DWM 亚克力不可用的降级）
+     enable != 0 → 恢复透明清屏（仅当窗口本身以 UiWindowConfig.translucent=1
+                   创建时有效；非透窗创建的窗口运行期无法反向开启——需要
+                   创建期的 WS_EX_NOREDIRECTIONBITMAP + 组合渲染面配合）。 */
+UI_API void  ui_window_set_translucent(UiWindow win, int enable);
 
 /* 标记 widget 为"点击即拖动窗口"：命中该 widget 时 WM_NCHITTEST 返回 HTCAPTION，
    交给系统做窗口拖动。HitTest 返回的是最深层子节点，所以 Panel 里面的 Button

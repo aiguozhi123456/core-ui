@@ -113,6 +113,10 @@ UI_API UiWindow ui_window_create(const UiWindowConfig* config) {
     auto win = std::make_unique<ui::UiWindowImpl>();
     win->skipOpenAnimation_ = (config->skip_animation != 0);
     win->startMaximizedPending_ = (config->start_maximized != 0);
+    /* 透窗强制跳过开场动画: NOREDIRECTIONBITMAP 窗口上 WS_EX_LAYERED +
+     * SetLayeredWindowAttributes 的 alpha 淡入与 DComp 内容合成不兼容. */
+    win->translucent_ = (config->translucent != 0);
+    if (win->translucent_) win->skipOpenAnimation_ = true;
     int initX = (config->x != 0 || config->y != 0) ? config->x : CW_USEDEFAULT;
     int initY = (config->x != 0 || config->y != 0) ? config->y : CW_USEDEFAULT;
     /* Build 65+ (L14): 把 owner UiWindow handle 解析成 HWND 传给 Create.
@@ -3143,6 +3147,13 @@ UI_API void ui_window_set_min_size(UiWindow win, int w_dip, int h_dip) {
     auto* wi = Win(win); if (!wi) return;
     /* 负值当 0 处理（= 恢复默认） */
     wi->SetMinSize(w_dip < 0 ? 0 : w_dip, h_dip < 0 ? 0 : h_dip);
+}
+
+UI_API void ui_window_set_translucent(UiWindow win, int enable) {
+    /* 只对透窗创建的窗口有意义: 0 = 降级恢复不透明清屏 (DComp 表面保留),
+     * 非 0 = 恢复透明清屏. 非透窗创建的窗口无组合渲染面, 运行期开不了. */
+    auto* wi = Win(win); if (!wi || !wi->translucent_) return;
+    wi->SetBackgroundMode(enable == 0 ? 0 : 1);
 }
 
 UI_API void ui_window_set_frameless(UiWindow win, int frameless) {

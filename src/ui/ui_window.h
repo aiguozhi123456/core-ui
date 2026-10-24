@@ -111,6 +111,10 @@ public:
     void LayoutRoot();
     WidgetPtr Root() const { return root_; }
     bool skipOpenAnimation_ = false;
+    /* 透窗模式 (UiWindowConfig.translucent, 创建入口拷贝): NOREDIRECTIONBITMAP
+     * + LayeredComposition 渲染面 + 透明清屏 (bgMode_=1). 运行期只允许"关"
+     * (ui_window_set_translucent(0) 恢复不透明清屏); 表面种类创建后不切换. */
+    bool translucent_ = false;
     /* Build 105+ (L25): config.start_maximized 状态. ui_window_create 拷,
      * Show / ShowImmediate 消费一次 (走 SW_SHOWMAXIMIZED 路径) 后清零, 不
      * 残留影响后续 ShowWindow(SW_HIDE)+Show() 循环. */

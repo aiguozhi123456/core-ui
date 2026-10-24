@@ -75,6 +75,9 @@ struct WindowHints {
     int         frameless   = -1;     // -1=unset, 0=system frame, 1=frameless custom chrome
     int         centered    = -1;     // -1=unset, 0=use x,y, 1=center on screen
     int         theme       = -1;     // -1=unset, 0=dark, 1=light
+    int         translucent = -1;     // -1=unset, 1=translucent window (DComp
+                                      // pre-multiplied alpha + transparent clear;
+                                      // caller paints DWM acrylic/mica behind)
 };
 
 // 编译期收集的 <menu>: 一棵 ContextMenu 结构 + 可选的"trigger 元素 @ event"

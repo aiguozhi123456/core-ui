@@ -135,6 +135,7 @@ WindowHints WindowHintsFromAttrs(const std::vector<ui::uix::SfcAttr>& attrs) {
         else if (a.name == "resizable")  hints.resizable = toBool(a.value);
         else if (a.name == "frameless")  hints.frameless = toBool(a.value);
         else if (a.name == "centered")   hints.centered  = toBool(a.value);
+        else if (a.name == "translucent") hints.translucent = toBool(a.value);
         else if (a.name == "theme") {
             if      (a.value == "dark")  hints.theme = 0;
             else if (a.value == "light") hints.theme = 1;
@@ -560,6 +561,7 @@ static UiWindow page_open_or_prepare_(UiPage p,
     if (hints.frameless == 0)   cfg.system_frame = 1;
     else if (hints.frameless == 1) cfg.system_frame = 0;
     if (hints.centered == 1)    { cfg.x = 0; cfg.y = 0; }
+    if (hints.translucent == 1) cfg.translucent = 1;
 
     if (hints.theme == 0)       ui_theme_set_mode(UI_THEME_DARK);
     else if (hints.theme == 1)  ui_theme_set_mode(UI_THEME_LIGHT);

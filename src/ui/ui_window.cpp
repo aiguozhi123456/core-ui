@@ -271,6 +271,11 @@ bool UiWindowImpl::Create(const wchar_t* title, int width, int height,
     /* 不需要开场动画时不加 WS_EX_LAYERED，避免首次 ShowWindow 500ms+ 延迟 */
     if (!skipOpenAnimation_)
         exStyle |= WS_EX_LAYERED;
+    /* 透窗: 去掉重定向表面, 内容经 DirectComposition pre-multiplied alpha
+     * 合成 (渲染面在 RegisterRenderWindow 里选 LayeredComposition).
+     * 与 WS_EX_LAYERED 淡入淡出互斥 — ui_window_create 已强制跳过动画. */
+    if (translucent_)
+        exStyle |= WS_EX_NOREDIRECTIONBITMAP;
 
     hwnd_ = CreateWindowExW(exStyle, L"UiCore_Window", title_.c_str(), style,
                             winX, winY, physW, physH,
@@ -296,6 +301,11 @@ bool UiWindowImpl::Create(const wchar_t* title, int width, int height,
         DwmExtendFrameIntoClientArea(hwnd_, &margins);
     }
 
+    /* 透窗: 每帧清屏改为全透明 (OnPaint 的 bgMode_ 分支), 露出 caller 在
+     * HWND 上打的 DWM 亚克力; 不透窗时保持默认主题色清屏. */
+    if (translucent_)
+        bgMode_ = 1;
+
     auto& ctx = GetContext();
     if (!renderer_.Init(ctx.D2DFactory(), ctx.DWFactory(), ctx.WICFactory())) return false;
     // CreateRenderTarget deferred to Show() — ensures client rect is final
@@ -309,7 +319,12 @@ void UiWindowImpl::RegisterRenderWindow(uint64_t id) {
     renderWindowId_ = RenderWindowId{id, hwndGeneration_};
     renderThreadPresentActive_ = false;
     RenderThread::Instance().Start();
-    RenderThread::Instance().RegisterWindow(renderWindowId_, hwnd_);
+    /* 透窗走组合渲染面: CreateSwapChainForComposition + DXGI_ALPHA_MODE_
+     * PREMULTIPLIED + DComp 视觉树 (Renderer::CreateRenderTargetForLayered,
+     * 上下文菜单弹窗同款管线); 普通窗口维持 hwnd flip swapchain. */
+    RenderThread::Instance().RegisterWindow(renderWindowId_, hwnd_,
+        translucent_ ? RenderSurfaceKind::LayeredComposition
+                     : RenderSurfaceKind::HwndSwapChain);
 }
 
 void UiWindowImpl::UnregisterRenderWindow() {
@@ -410,7 +425,10 @@ void UiWindowImpl::Show() {
     DwmSetWindowAttribute(hwnd_, DWMWA_TRANSITIONS_FORCEDISABLED,
                           &disableTransitions, sizeof(disableTransitions));
 
-    EnsureLayeredForAlpha(hwnd_);
+    /* 透窗: 全程不给窗口加 WS_EX_LAYERED — 分层 alpha 与 NOREDIRECTIONBITMAP
+     * 上的 DComp 内容合成不兼容 (会黑闪), 动画路径见 StartWindow* 的透窗直通. */
+    if (!translucent_)
+        EnsureLayeredForAlpha(hwnd_);
 
     startupRevealPending_ = false;
     startupRevealPosted_ = false;
@@ -434,10 +452,12 @@ void UiWindowImpl::Show() {
         LayoutRoot();
         SubmitRenderThreadFrameNow(FrameReason::Startup, PresentPolicy::Immediate);
         ValidateRect(hwnd_, nullptr);
-        /* 直接以最大化态显示，不走 slide 动画 */
-        SetLayeredWindowAttributes(hwnd_, 0, 255, LWA_ALPHA);
+        /* 直接以最大化态显示，不走 slide 动画（透窗: 分层 alpha 不可用, 略过） */
+        if (!translucent_) {
+            SetLayeredWindowAttributes(hwnd_, 0, 255, LWA_ALPHA);
+            ClearLayeredAfterAlpha(hwnd_);
+        }
         ShowWindow(hwnd_, SW_SHOWMAXIMIZED);
-        ClearLayeredAfterAlpha(hwnd_);
         if (!toolWindow_) SetForegroundWindow(hwnd_);
         return;
     }
@@ -1073,6 +1093,15 @@ void UiWindowImpl::SetRoot(WidgetPtr root) {
 void UiWindowImpl::StartWindowOpenAnimation() {
     if (!hwnd_) return;
 
+    /* 透窗直通: 分层 alpha 动画在 NOREDIRECTIONBITMAP + DComp 上不可用,
+     * 内容已在 Show() 里提交过首帧, 直接显示即可. */
+    if (translucent_) {
+        ShowWindow(hwnd_, SW_SHOWNOACTIVATE);
+        ShowOwnedPopups(hwnd_, TRUE);
+        if (!toolWindow_) SetForegroundWindow(hwnd_);
+        return;
+    }
+
     windowAnimating_ = true;
     windowClosing_ = false;
     windowAnimProgress_ = 0.0f;
@@ -1104,6 +1133,15 @@ void UiWindowImpl::StartWindowOpenAnimation() {
 
 void UiWindowImpl::StartWindowCloseAnimation() {
     if (!hwnd_) return;
+
+    /* 透窗直通: 关闭淡出同样依赖分层 alpha, 不可用 — 直接销毁
+     * (与下方 SetTimer 失败的回退路径一致). */
+    if (translucent_) {
+        windowClosing_ = false;
+        windowAnimating_ = false;
+        DestroyWindow(hwnd_);
+        return;
+    }
 
     windowClosing_ = true;
     windowAnimating_ = true;
