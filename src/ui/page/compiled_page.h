@@ -78,6 +78,7 @@ struct WindowHints {
     int         translucent = -1;     // -1=unset, 1=translucent window (DComp
                                       // pre-multiplied alpha + transparent clear;
                                       // caller paints DWM acrylic/mica behind)
+    int         tabNavigation = -1;   // -1=unset, 0=off, 1=Tab/Shift+Tab focus traversal
 };
 
 // 编译期收集的 <menu>: 一棵 ContextMenu 结构 + 可选的"trigger 元素 @ event"

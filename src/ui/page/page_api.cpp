@@ -136,6 +136,8 @@ WindowHints WindowHintsFromAttrs(const std::vector<ui::uix::SfcAttr>& attrs) {
         else if (a.name == "frameless")  hints.frameless = toBool(a.value);
         else if (a.name == "centered")   hints.centered  = toBool(a.value);
         else if (a.name == "translucent") hints.translucent = toBool(a.value);
+        else if (a.name == "tabNavigation" || a.name == "tab-navigation")
+            hints.tabNavigation = toBool(a.value);
         else if (a.name == "theme") {
             if      (a.value == "dark")  hints.theme = 0;
             else if (a.value == "light") hints.theme = 1;
@@ -573,6 +575,11 @@ static UiWindow page_open_or_prepare_(UiPage p,
         ui_window_set_min_size(win,
                                hints.minWidth  > 0 ? hints.minWidth  : 0,
                                hints.minHeight > 0 ? hints.minHeight : 0);
+    }
+    /* Tab 焦点导航是显式 opt-in: 只有 tabNavigation="true" 才开 (unset/off
+     * 都保持默认关, 已有页面行为不变)。 */
+    if (hints.tabNavigation == 1) {
+        ui_window_set_tab_navigation(win, 1);
     }
 
     auto root = e->state->Root();

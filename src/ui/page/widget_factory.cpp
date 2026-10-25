@@ -1321,6 +1321,11 @@ WidgetPtr BuildWidget(const ui::uix::Node& node, const ui::css::ComputedStyle& s
             else if (a.name == "drop-target" || a.name == "dropTarget") {
                 w->dropTarget = ParseBoolAttr(a.rawValue);
             }
+            // Fold a plain <div> into the keyboard focus system: clickable
+            // divs become Tab-traversable + Enter/Space-activatable.
+            else if (a.name == "focusable") {
+                w->focusable = ParseBoolAttr(a.rawValue);
+            }
             // For text-like widgets: value attribute for input, alt for img, etc. — skipped in v0
         }
     }

@@ -3149,6 +3149,11 @@ UI_API void ui_window_set_min_size(UiWindow win, int w_dip, int h_dip) {
     wi->SetMinSize(w_dip < 0 ? 0 : w_dip, h_dip < 0 ? 0 : h_dip);
 }
 
+UI_API void ui_window_set_tab_navigation(UiWindow win, int enabled) {
+    auto* wi = Win(win); if (!wi) return;
+    wi->SetTabNavigation(enabled != 0);
+}
+
 UI_API void ui_window_set_translucent(UiWindow win, int enable) {
     /* 只对透窗创建的窗口有意义: 0 = 降级恢复不透明清屏 (DComp 表面保留),
      * 非 0 = 恢复透明清屏. 非透窗创建的窗口无组合渲染面, 运行期开不了. */

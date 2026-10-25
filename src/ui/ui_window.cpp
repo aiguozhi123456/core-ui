@@ -1684,16 +1684,28 @@ LRESULT UiWindowImpl::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         break;
+    case WM_SETFOCUS:
+        /* Regained keyboard focus (alt-tab back, taskbar / title-bar click).
+         * WM_KILLFOCUS suspended the focused widget's edit state but kept the
+         * focus slot; restore it so typing continues where it left off.
+         * Without this round-trip the widget's edit guards stayed false while
+         * focusedWidget_ still routed keys to it — typing went dead until the
+         * user clicked the input again. */
+        if (focusedWidget_) {
+            focusedWidget_->SetFocused(true);
+            focusedWidget_->RefreshCssState();
+            UpdateCaretBlinkTimer();
+            InvalidateNow();
+            UpdateImeCompositionPos();
+        }
+        return 0;
     case WM_KILLFOCUS:
-        if (root_) {
-            ForEachWidget(root_.get(), [&](Widget* w) {
-                auto* ti = dynamic_cast<TextInputWidget*>(w);
-                if (ti) ti->focused = false;
-                auto* ta = dynamic_cast<TextAreaWidget*>(w);
-                if (ta) ta->focused = false;
-                auto* cw = dynamic_cast<CustomWidget*>(w);
-                if (cw) cw->focused = false;
-            });
+        /* Window-level blur: suspend (not clear) widget focus. The OS owns
+         * the keyboard now — carets stop blinking and :focus CSS drops — but
+         * focusedWidget_ stays so WM_SETFOCUS can restore it. */
+        if (focusedWidget_) {
+            focusedWidget_->SetFocused(false);
+            focusedWidget_->RefreshCssState();
         }
         UpdateCaretBlinkTimer();
         InvalidateNow();
@@ -2785,14 +2797,6 @@ void UiWindowImpl::OnMouseDown(float x, float y) {
         Widget* target = hit;
         while (target && !target->focusable) target = target->Parent();
         SetFocus(target);
-
-        // Clear NumberBox focus when clicking elsewhere
-        ForEachWidget(root_.get(), [&](Widget* w) {
-            auto* nb = dynamic_cast<NumberBoxWidget*>(w);
-            if (nb && nb != target && nb != hit) {
-                if (nb->focused) { nb->focused = false; }
-            }
-        });
     }
 
     // Check open ComboBox dropdowns
@@ -3307,8 +3311,9 @@ bool UiWindowImpl::DispatchKeyDown(int vk) {
         }
     }
 
-    // 3. Enter / Space → activate focused widget
-    if (focusedWidget_ && (vk == VK_RETURN || vk == VK_SPACE)) {
+    // 3. Enter / Space → activate focused widget (mouse clicks gate on
+    // enabled inside OnMouseDown; keyboard activation must gate the same way)
+    if (focusedWidget_ && focusedWidget_->enabled && (vk == VK_RETURN || vk == VK_SPACE)) {
         if (auto* cb = dynamic_cast<CheckBoxWidget*>(focusedWidget_)) {
             if (vk == VK_SPACE) {
                 cb->SetChecked(!cb->Checked());
@@ -3572,21 +3577,10 @@ void UiWindowImpl::OnGetMinMaxInfo(MINMAXINFO* mmi) {
 }
 
 bool UiWindowImpl::HasFocusedTextInput() const {
-    if (!root_) return false;
-
-    bool focused = false;
-    ForEachWidget(root_.get(), [&](Widget* w) {
-        if (focused) return;
-        auto* ti = dynamic_cast<TextInputWidget*>(w);
-        if (ti && ti->focused) { focused = true; return; }
-        auto* ta = dynamic_cast<TextAreaWidget*>(w);
-        if (ta && ta->focused) { focused = true; return; }
-        auto* cw = dynamic_cast<CustomWidget*>(w);
-        if (cw && cw->focused) { focused = true; return; }
-        auto* ci = dynamic_cast<ChipsInputWidget*>(w);
-        if (ci && ci->IsFocused()) { focused = true; return; }
-    });
-    return focused;
+    /* Single caret per window: only the focused widget may ask for blink
+     * (NeedsCaretBlink), so the old full-tree flag scan is gone with the
+     * duplicate per-widget "focused" bools it had to reconcile. */
+    return focusedWidget_ && focusedWidget_->NeedsCaretBlink();
 }
 
 void UiWindowImpl::UpdateCaretBlinkTimer() {
@@ -3607,20 +3601,17 @@ void UiWindowImpl::UpdateCaretBlinkTimer() {
 // ---- Focus management ----
 
 void UiWindowImpl::SetFocus(Widget* w) {
+    /* Focus state lives in Widget::focused_ alone; SetFocused() fans out to
+     * per-widget reactions (caret blink restart etc.) via OnFocusChanged. */
     if (focusedWidget_ == w) return;
     if (focusedWidget_) {
         focusedWidget_->SetFocused(false);
         focusedWidget_->RefreshCssState();
-        if (auto* ti = dynamic_cast<TextInputWidget*>(focusedWidget_)) ti->focused = false;
-        if (auto* ta = dynamic_cast<TextAreaWidget*>(focusedWidget_)) ta->focused = false;
     }
     focusedWidget_ = w;
     if (w) {
         w->SetFocused(true);
         w->RefreshCssState();
-        if (auto* ti = dynamic_cast<TextInputWidget*>(w)) { ti->focused = true; ti->ResetCaretBlink(); }
-        if (auto* ta = dynamic_cast<TextAreaWidget*>(w)) { ta->focused = true; ta->ResetCaretBlink(); }
-        if (auto* ci = dynamic_cast<ChipsInputWidget*>(w)) ci->ResetCaretBlink();
     }
     UpdateCaretBlinkTimer();
 }

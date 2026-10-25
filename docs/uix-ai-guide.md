@@ -166,8 +166,17 @@ export default {
 | `drop` | 鼠标字段 + `data` |
 | `dragend` | bool（是否成功投放） |
 
+`@focus` / `@blur` 注意：窗口级失焦/回焦（alt-tab、点任务栏/标题栏）也会触发
+当前焦点控件的 `blur` → `focus` 成对钩子——焦点状态由 `Widget::focused_` 单一
+持有，窗口失去键盘焦点时该状态被"挂起"，回焦时恢复。
+
 拖放属性：`draggable="true"`、`drag-data="payload"`（隐含 draggable）、
 `drop-target="true"`（绑 `@drop` 亦隐含）。拖动悬停目标进入 `:drag-over` 伪类。
+
+焦点属性：`focusable="true"` 把普通 `<div>` 纳入键盘焦点体系——可点击的 div
+由此获得 Tab 遍历与 Enter/Space 激活（表单类控件 input/textarea/toggle/
+checkbox/slider/combo 天生可聚焦，无需标注）。配合 `<window
+tabNavigation="true">`（默认关）开启 Tab/Shift+Tab 焦点循环与焦点环。
 
 `<chips-input>`：单行模板编辑器（原子变量 chip + 自由文本）。属性
 `placeholder`、`chip-labels="key=显示名;..."`；`:value`/`v-model`/`@change`

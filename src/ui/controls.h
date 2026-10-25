@@ -282,10 +282,11 @@ public:
     bool OnMouseUp(const MouseEvent& e) override;
     bool OnKeyChar(wchar_t ch) override;
     bool OnKeyDown(int vk) override;
+    void OnFocusChanged(bool focused) override { if (focused) ResetCaretBlink(); }
+    bool NeedsCaretBlink() const override { return IsFocused(); }
     D2D1_SIZE_F SizeHint() const override;
     bool GetCaretRect(D2D1_RECT_F* out) const override;
 
-    bool focused = false;
     bool readOnly = false;
     std::function<bool(wchar_t)> inputFilter;
     int maxLength = -1;
@@ -345,6 +346,8 @@ public:
     bool OnMouseUp(const MouseEvent& e) override;
     bool OnKeyChar(wchar_t ch) override;
     bool OnKeyDown(int vk) override;
+    void OnFocusChanged(bool focused) override { if (focused) ResetCaretBlink(); }
+    bool NeedsCaretBlink() const override { return IsFocused(); }
     D2D1_SIZE_F SizeHint() const override;
     bool GetCaretRect(D2D1_RECT_F* out) const override;
 
@@ -412,10 +415,11 @@ public:
     bool OnMouseWheel(const MouseEvent& e) override;
     bool OnKeyChar(wchar_t ch) override;
     bool OnKeyDown(int vk) override;
+    void OnFocusChanged(bool focused) override { if (focused) ResetCaretBlink(); }
+    bool NeedsCaretBlink() const override { return IsFocused(); }
     D2D1_SIZE_F SizeHint() const override;
     bool GetCaretRect(D2D1_RECT_F* out) const override;
 
-    bool focused = false;
     bool readOnly = false;
     std::function<bool(wchar_t)> inputFilter;
     int maxLength = -1;
@@ -1140,6 +1144,11 @@ public:
     LayoutCb     layoutCb     = nullptr;  void* layoutUd     = nullptr;
 
     uint64_t apiHandle = 0;  // set after Reg() for C callbacks
+    /* Legacy "paint focus" bool: C hosts toggle it standalone (pre-focus-
+     * integration callers) and OnMouseDown sets it for non-focusable customs.
+     * It is NOT the window focus state — OnFocusChanged syncs it whenever the
+     * window focus system touches this widget so the two cannot disagree when
+     * both are in play. */
     bool focused = false;
 
     void OnDraw(Renderer& r) override;
@@ -1149,6 +1158,8 @@ public:
     bool OnMouseWheel(const MouseEvent& e) override;
     bool OnKeyDown(int vk) override;
     bool OnKeyChar(wchar_t ch) override;
+    void OnFocusChanged(bool f) override { focused = f; }
+    bool NeedsCaretBlink() const override { return IsFocused(); }
     void DoLayout() override;
     D2D1_SIZE_F SizeHint() const override;
 
@@ -1273,9 +1284,9 @@ public:
     bool OnKeyChar(wchar_t ch) override;
     bool OnKeyDown(int vk) override;
     bool OnMouseWheel(const MouseEvent& e) override;
+    bool NeedsCaretBlink() const override { return IsFocused() && editing_; }
     D2D1_SIZE_F SizeHint() const override;
 
-    bool focused = false;
     bool readOnly = false;
 
 private:

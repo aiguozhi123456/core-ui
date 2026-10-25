@@ -992,6 +992,7 @@ std::wstring TextInputWidget::GetClipboardText() {
 
 void TextInputWidget::OnDraw(Renderer& r) {
     bool dark = theme::IsDark();
+    bool focused = IsFocused();
     float cr = (css.borderRadius >= 0) ? css.borderRadius : theme::radius::medium;
     float fontSize = (css.fontSize > 0) ? css.fontSize : theme::kFontSizeNormal;
     D2D1_COLOR_F accent = css.hasAccent ? css.accent : theme::kAccent();
@@ -1129,9 +1130,10 @@ void TextInputWidget::OnDraw(Renderer& r) {
 
 bool TextInputWidget::OnMouseDown(const MouseEvent& e) {
     if (!enabled) return false;
-    bool wasFocused = focused;
-    focused = Contains(e.x, e.y);
-    if (focused) {
+    // Focus itself is window-owned (UiWindowImpl::SetFocus ran on the way
+    // here); only the edit state below is ours.
+    bool in = Contains(e.x, e.y);
+    if (in) {
         extern MeasureContext* g_activeMeasureContext;
         if (g_activeMeasureContext) {
             cursorPos_ = CharIndexFromX(*g_activeMeasureContext, e.x);
@@ -1148,12 +1150,12 @@ bool TextInputWidget::OnMouseDown(const MouseEvent& e) {
     } else {
         ClearSelection();
     }
-    return focused;
+    return in;
 }
 
 bool TextInputWidget::OnMouseMove(const MouseEvent& e) {
     hovered = Contains(e.x, e.y);
-    if (dragging_ && focused) {
+    if (dragging_ && IsFocused()) {
         extern MeasureContext* g_activeMeasureContext;
         if (g_activeMeasureContext) {
             cursorPos_ = CharIndexFromX(*g_activeMeasureContext, e.x);
@@ -1174,7 +1176,7 @@ bool TextInputWidget::OnMouseUp(const MouseEvent& e) {
 }
 
 bool TextInputWidget::OnKeyChar(wchar_t ch) {
-    if (!focused || !enabled) return false;
+    if (!IsFocused() || !enabled) return false;
     if (readOnly) return true;  // consume but don't modify
 
     if (ch == '\b') {
@@ -1201,7 +1203,7 @@ bool TextInputWidget::OnKeyChar(wchar_t ch) {
 }
 
 bool TextInputWidget::OnKeyDown(int vk) {
-    if (!focused || !enabled) return false;
+    if (!IsFocused() || !enabled) return false;
 
     // ENTER fires the form-submit hook (Vue's `@submit.prevent`-ish — single-
     // line input has no use for a literal newline, so submit takes priority).
@@ -1539,6 +1541,7 @@ std::wstring TextAreaWidget::GetClipboardText() {
 
 void TextAreaWidget::OnDraw(Renderer& r) {
     bool dark = theme::IsDark();
+    bool focused = IsFocused();
     float cr = (css.borderRadius >= 0) ? css.borderRadius : theme::radius::medium;
     float fontSize = (css.fontSize > 0) ? css.fontSize : theme::kFontSizeNormal;
     D2D1_COLOR_F accent = css.hasAccent ? css.accent : theme::kAccent();
@@ -1705,8 +1708,8 @@ bool TextAreaWidget::OnMouseDown(const MouseEvent& e) {
         }
     }
 
-    focused = Contains(e.x, e.y);
-    if (focused) {
+    bool in = Contains(e.x, e.y);
+    if (in) {
         extern MeasureContext* g_activeMeasureContext;
         if (g_activeMeasureContext) {
             float fontSize = (css.fontSize > 0) ? css.fontSize : theme::kFontSizeNormal;
@@ -1725,7 +1728,7 @@ bool TextAreaWidget::OnMouseDown(const MouseEvent& e) {
     } else {
         ClearSelection();
     }
-    return focused;
+    return in;
 }
 
 bool TextAreaWidget::OnMouseMove(const MouseEvent& e) {
@@ -1741,7 +1744,7 @@ bool TextAreaWidget::OnMouseMove(const MouseEvent& e) {
         ClampScroll();
         return true;
     }
-    if (dragging_ && focused) {
+    if (dragging_ && IsFocused()) {
         extern MeasureContext* g_activeMeasureContext;
         if (g_activeMeasureContext) {
             float fontSize = (css.fontSize > 0) ? css.fontSize : theme::kFontSizeNormal;
@@ -1807,7 +1810,7 @@ bool TextAreaWidget::OnMouseWheel(const MouseEvent& e) {
 }
 
 bool TextAreaWidget::OnKeyChar(wchar_t ch) {
-    if (!focused || !enabled) return false;
+    if (!IsFocused() || !enabled) return false;
     if (readOnly) return true;
 
     if (ch == '\b') {
@@ -1840,7 +1843,7 @@ bool TextAreaWidget::OnKeyChar(wchar_t ch) {
 }
 
 bool TextAreaWidget::OnKeyDown(int vk) {
-    if (!focused || !enabled) return false;
+    if (!IsFocused() || !enabled) return false;
 
     /* build 288: ESC 冒泡给宿主, 理由同 TextInputWidget::OnKeyDown。 */
     if (vk == VK_ESCAPE) return false;
@@ -4816,6 +4819,7 @@ void NumberBoxWidget::CommitEdit() {
 
 void NumberBoxWidget::OnDraw(Renderer& r) {
     bool dark = theme::IsDark();
+    bool focused = IsFocused();
     float cr = (css.borderRadius >= 0) ? css.borderRadius : theme::radius::medium;
     float fontSize = (css.fontSize > 0) ? css.fontSize : theme::kFontSizeNormal;
     D2D1_COLOR_F accent = css.hasAccent ? css.accent : theme::kAccent();
@@ -4902,10 +4906,8 @@ bool NumberBoxWidget::OnMouseDown(const MouseEvent& e) {
     if (!enabled) return false;
     if (!Contains(e.x, e.y)) {
         if (editing_) CommitEdit();
-        focused = false;
         return false;
     }
-    focused = true;
 
     if (!readOnly) {
         auto upR = UpBtnRect(), downR = DownBtnRect();
@@ -4946,7 +4948,7 @@ bool NumberBoxWidget::OnMouseUp(const MouseEvent& e) {
 }
 
 bool NumberBoxWidget::OnKeyChar(wchar_t ch) {
-    if (!focused || !editing_ || !enabled || readOnly) return false;
+    if (!IsFocused() || !editing_ || !enabled || readOnly) return false;
     if (ch == '\r') { CommitEdit(); return true; }
     if (ch == '\b') {
         if (cursorPos_ > 0 && !editText_.empty()) {
@@ -4965,7 +4967,7 @@ bool NumberBoxWidget::OnKeyChar(wchar_t ch) {
 }
 
 bool NumberBoxWidget::OnKeyDown(int vk) {
-    if (!focused || !enabled) return false;
+    if (!IsFocused() || !enabled) return false;
     if (readOnly && (vk == VK_UP || vk == VK_DOWN || vk == VK_RETURN)) return true;
     if (vk == VK_UP) { SetValue(value_ + step_); return true; }
     if (vk == VK_DOWN) { SetValue(value_ - step_); return true; }

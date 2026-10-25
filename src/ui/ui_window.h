@@ -84,7 +84,8 @@ public:
     // Focus management
     Widget* focusedWidget_ = nullptr;
     bool showFocusRing_ = false;   // only show focus ring when navigating via keyboard
-    bool tabNavigationEnabled_ = false; // must be explicitly enabled (e.g. from .ui file)
+    bool tabNavigationEnabled_ = false; // opt-in: <window tabNavigation="true"> or ui_window_set_tab_navigation
+    void SetTabNavigation(bool on) { tabNavigationEnabled_ = on; }
     void FocusNext(bool reverse = false);
     void SetFocus(Widget* w);
     void ClearFocus();

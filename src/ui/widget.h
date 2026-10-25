@@ -444,6 +444,13 @@ public:
     virtual bool OnMouseDoubleClick(const MouseEvent& e);
     virtual bool OnKeyDown(int vk)   { (void)vk; return false; }
     virtual bool OnKeyChar(wchar_t c){ (void)c;  return false; }
+    // Focus-state reaction. Fired by SetFocused() when the flag actually
+    // flips — subclasses restart caret blink / redraw edit affordances here
+    // instead of tracking a second "focused" bool.
+    virtual void OnFocusChanged(bool focused) { (void)focused; }
+    // True while this focused widget should drive the window caret-blink
+    // timer (one text caret per window: only the focused widget may blink).
+    virtual bool NeedsCaretBlink() const { return false; }
     // IME anchor: caret rect in window DIP coords. Text-editing widgets
     // override; UiWindowImpl uses it to pin the IME composition/candidate
     // window at the caret (WM_IME_STARTCOMPOSITION/WM_IME_COMPOSITION).
@@ -454,12 +461,17 @@ public:
     virtual float HeightForWidth(float width) const { (void)width; return SizeHint().height; }
 
     // ---- Focus ----
+    // Single source of truth for focus state: Widget::focused_. Subclasses
+    // must NOT keep a parallel "focused" bool next to it (the old duplicates
+    // desynced — see TextInputWidget/TextAreaWidget history); react to focus
+    // flips in OnFocusChanged instead.
     bool IsFocused() const { return focused_; }
     void SetFocused(bool f) {
         if (focused_ == f) return;
         focused_ = f;
         if (f) { if (onFocusHook) onFocusHook(); }
         else   { if (onBlurHook)  onBlurHook();  }
+        OnFocusChanged(f);
     }
     void DrawFocusRing(Renderer& r);
 

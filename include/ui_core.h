@@ -1421,6 +1421,10 @@ UI_API void  ui_window_invoke_sync(UiWindow win, void (*fn)(void* ud), void* ud)
    用于无边框画布等场景：窗口随 widget 尺寸动态缩放，需要小于主题默认最小尺寸。 */
 UI_API void  ui_window_set_min_size(UiWindow win, int w_dip, int h_dip);
 
+/* 运行时开关 Tab 焦点导航（Tab / Shift+Tab 在可聚焦控件间循环并显示焦点环）。
+ * 与 <window tabNavigation="true"> 等效；默认关闭。 */
+UI_API void  ui_window_set_tab_navigation(UiWindow win, int enabled);
+
 /* 运行时切换窗口边框：
  *   frameless != 0 → 无系统边框 / 标题栏（需自己放 TitleBar）
  *   frameless == 0 → 系统原生标题栏 + 最小化 / 最大化 / 关闭按钮
