@@ -148,6 +148,61 @@ void ParseDynamicAbsSide(const ui::expr::Value& v, float& slot, std::string& raw
     rawSlot = text;
 }
 
+// Mirror of widget.cpp's file-local ResolveAbsSide: %/calc() sides can only
+// be resolved against the parent content box; px sides are already resolved
+// into pos*Left/Top/Right/Bottom.
+float ResolveAbsSidePx(const std::string& raw, float fallback, float parentSize) {
+    if (raw.empty()) return fallback;
+    auto pv = ui::css::ParseValue(raw);
+    for (const auto& c : pv.components) {
+        double px = 0;
+        if (c.kind == ui::css::ComponentKind::Length) {
+            if (ui::css::ResolveLengthPx(c.length, parentSize, 14, 14, 1920, 1080, px))
+                return static_cast<float>(px);
+        } else if (c.kind == ui::css::ComponentKind::Function && c.ident == "calc") {
+            if (ui::css::EvalCalc(c, parentSize, 14, 14, 1920, 1080, px))
+                return static_cast<float>(px);
+        }
+    }
+    return fallback;
+}
+
+// Move-only fast path for a :left/:top write on an already-laid-out absolute
+// widget. Absolute children are painted in an overlay pass and hit-tested
+// separately (Widget::DrawTree / Widget::HitTest), so their position never
+// affects flow siblings — moving the rect and requesting a paint is enough,
+// no full-tree relayout (30Hz cosmetic drift animations).
+bool TryMoveAbsoluteSide(Widget* w) {
+    Widget* parent = w->Parent();
+    if (!parent || !w->positionAbsolute || w->layoutPinned) return false;
+    const float width  = w->rect.right  - w->rect.left;
+    const float height = w->rect.bottom - w->rect.top;
+    if (width <= 0.0f || height <= 0.0f) return false;   // not laid out yet
+    // Same arithmetic as Widget::DoLayout's positionAbsolute branch: left/top
+    // win over right/bottom, right/bottom anchor against the parent content
+    // box. Size is preserved — a side binding never resizes.
+    const float cw = parent->ContentWidth();
+    const float ch = parent->ContentHeight();
+    const float pl = ResolveAbsSidePx(w->posLeftRaw,   w->posLeft,   cw);
+    const float pr = ResolveAbsSidePx(w->posRightRaw,  w->posRight,  cw);
+    const float pt = ResolveAbsSidePx(w->posTopRaw,    w->posTop,    ch);
+    const float pb = ResolveAbsSidePx(w->posBottomRaw, w->posBottom, ch);
+    const float cx = parent->ContentLeft();
+    const float cy = parent->ContentTop();
+    float x = cx, y = cy;
+    if (pl >= 0)      x = cx + pl;
+    else if (pr >= 0) x = cx + cw - width - pr;
+    if (pt >= 0)      y = cy + pt;
+    else if (pb >= 0) y = cy + ch - height - pb;
+    w->rect = {x, y, x + width, y + height};
+    w->DoLayout();   // re-seat this widget's own children in the moved rect
+    // Paint-only invalidation, same call the animation timers use. Deliberately
+    // NOT ui::RequestLayout(): that sets the global layout-dirty flag and
+    // forces a full-tree measure/arrange on the next paint.
+    if (auto* win = ui::GetContext().FindWindowByWidget(w)) win->Invalidate();
+    return true;
+}
+
 bool ApplyDynamicAbsSideBinding(Widget* w, const std::string& prop,
                                 const ui::expr::Value& v) {
     if (!w) return false;
@@ -175,6 +230,7 @@ bool ApplyDynamicAbsSideBinding(Widget* w, const std::string& prop,
         return false;
     }
     ApplyDynamicPositionOverrides(w);
+    if ((prop == "left" || prop == "top") && TryMoveAbsoluteSide(w)) return true;
     ui::RequestLayout();
     return true;
 }
