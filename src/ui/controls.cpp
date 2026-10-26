@@ -229,6 +229,18 @@ bool LabelWidget::OnKeyDown(int vk) {
 D2D1_SIZE_F LabelWidget::SizeHint() const {
     /* 估算文本宽度：CJK 字符按 1.0 倍 fontSize，其他按 0.55 倍 */
     /* 加粗字体每字符多约 8% 宽度，避免末字符触发 ellipsis 截断 */
+    /* 每趟 LayoutRoot 都会问每个 label 的 SizeHint; MeasureTextWidth 是
+     * 全文 IDWriteTextLayout 创建, 长文本毫秒级 — 与 HeightForWidth 同款
+     * 自校验缓存, 否则 200+ label 页面在 30Hz 全树 relayout 下烧满 UI 线程. */
+    extern MeasureContext* g_activeMeasureContext;
+    bool measuredNow = (g_activeMeasureContext != nullptr);
+    size_t hintHash = std::hash<std::wstring>{}(text_);
+    if (hintCacheValid_ && hintCacheMeasured_ == measuredNow &&
+        hintCacheFixedW_ == fixedW && hintCacheFs_ == fontSize_ &&
+        hintCacheBold_ == bold_ && hintCachePadLR_ == (padL + padR) &&
+        hintCacheTextLen_ == text_.size() && hintCacheTextHash_ == hintHash) {
+        return {hintCacheW_ + padL + padR, HeightForWidth(fixedW)};
+    }
     float estW = 0;
     if (fixedW > 0) {
         estW = fixedW;
@@ -236,7 +248,6 @@ D2D1_SIZE_F LabelWidget::SizeHint() const {
         // 优先用 renderer 的精确测量（DWrite），估算只在 renderer 还没 attach
         // 时兜底。Estimate 对粗体小字（如 11px bold "PRO"）会少算 → wrap=true
         // 时把单行文字折成 2 行。+1px 防亚像素 ellipsis。
-        extern MeasureContext* g_activeMeasureContext;
         if (g_activeMeasureContext && !text_.empty()) {
             auto weight = bold_ ? DWRITE_FONT_WEIGHT_SEMI_BOLD
                                 : DWRITE_FONT_WEIGHT_NORMAL;
@@ -278,6 +289,15 @@ D2D1_SIZE_F LabelWidget::SizeHint() const {
      * 返自然宽, 受约束 (fixedW / flex shrink / 父级显式 width) 的 label 仍
      * 然在画的时候按真实分配宽度 wrap. */
     float w = estW;
+    hintCacheValid_ = true;
+    hintCacheMeasured_ = measuredNow;
+    hintCacheFixedW_ = fixedW;
+    hintCacheFs_ = fontSize_;
+    hintCacheBold_ = bold_;
+    hintCachePadLR_ = padL + padR;
+    hintCacheTextLen_ = text_.size();
+    hintCacheTextHash_ = hintHash;
+    hintCacheW_ = w;
     return {w + padL + padR, HeightForWidth(fixedW)};
 }
 
@@ -302,18 +322,42 @@ float LabelWidget::HeightForWidth(float width) const {
         if (availW > 10.0f) {
             extern MeasureContext* g_activeMeasureContext;
             if (g_activeMeasureContext) {
+                /* 自校验缓存: 每趟 LayoutRoot 都会走到这里, 为每个 wrap label
+                 * 重建 IDWriteTextLayout 量高度 — 长文本毫秒级, 200+ label
+                 * 的页面(聊天)在 33ms 漂移定时器全树 relayout 下把 UI 线程
+                 * 烧满, /new 清列表时消息队列饿死 = 假死. 输入全等才命中,
+                 * 不依赖 setter 通知. */
+                size_t textHash = std::hash<std::wstring>{}(text_);
+                if (wrapCacheValid_ && wrapCacheW_ == width &&
+                    wrapCacheFs_ == fontSize_ && wrapCacheLineH_ == lineH &&
+                    wrapCachePadLR_ == (padL + padR) && wrapCacheBold_ == bold_ &&
+                    wrapCacheMaxLines_ == maxLines_ &&
+                    wrapCacheTextLen_ == text_.size() &&
+                    wrapCacheTextHash_ == textHash) {
+                    return wrapCacheH_ + padT + padB;
+                }
                 auto weight = bold_ ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL;
                 float textH = g_activeMeasureContext->MeasureTextHeight(text_, availW, fontSize_, weight);
-                /* build 92 (L20): wrap 分支也走 line-height. DWrite textH 包含
-                 * ascent + descent (单行 ≈ fontSize × 1.2). 折成行数后乘 lineH.
-                 * 1.4 阈值: 单行实际 ratio ≈ 1.2, 用 1.4 当 "definitely > 1 line"
-                 * 边界, 防 ceil(1.23) 错误判 2 行. */
-                int numLines = std::max(1, (int)std::ceil(textH / (fontSize_ * 1.4f)));
-                h = numLines * lineH;
+                /* 旧算法 ceil(textH/(fs*1.4))*lineH 对长 CJK 文本系统性偏短:
+                 * 回退字体把真实行距撑到 1.4fs 以上, 行数估少 + 每行按 1.3fs
+                 * 计, 气泡底被文字顶穿。DrawText 不设 SetLineSpacing, 绘制高
+                 * 度就是 DWrite 默认行距下的 metrics.height — 直接用它, 测量
+                 * 与绘制同源; 单行下限保住 CSS line-height 的视觉高度。 */
+                h = std::max(textH, lineH);
                 if (maxLines_ > 0) {
                     float maxH = lineH * maxLines_;
                     if (h > maxH) h = maxH;
                 }
+                wrapCacheValid_ = true;
+                wrapCacheW_ = width;
+                wrapCacheFs_ = fontSize_;
+                wrapCacheLineH_ = lineH;
+                wrapCachePadLR_ = padL + padR;
+                wrapCacheBold_ = bold_;
+                wrapCacheMaxLines_ = maxLines_;
+                wrapCacheTextLen_ = text_.size();
+                wrapCacheTextHash_ = textHash;
+                wrapCacheH_ = h;
             }
         }
     }

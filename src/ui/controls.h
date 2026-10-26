@@ -79,6 +79,36 @@ private:
     int selectionEnd_ = -1;
     bool dragging_ = false;
     int CharIndexAtX(MeasureContext& measure, float x) const;
+
+    // HeightForWidth wrap 分支的自校验缓存（mutable：const 测量路径写入）。
+    // 每趟 LayoutRoot 都会重建 IDWriteTextLayout 量文本高度，长文本是毫秒
+    // 级；200+ label 的页面在 33ms 漂移定时器全树 relayout 下会把 UI 线程
+    // 烧满（/new 清列表时消息队列饿死 = 假死）。输入全等才命中，不依赖
+    // setter 通知；shortcut: 全局字体族(theme::kFontFamily)运行期变更不
+    // 失效缓存，改字体主题需重启进程。
+    mutable bool wrapCacheValid_ = false;
+    mutable float wrapCacheW_ = -1.0f;
+    mutable float wrapCacheFs_ = -1.0f;
+    mutable float wrapCacheLineH_ = -1.0f;
+    mutable float wrapCachePadLR_ = -1.0f;
+    mutable bool wrapCacheBold_ = false;
+    mutable int wrapCacheMaxLines_ = -1;
+    mutable size_t wrapCacheTextLen_ = 0;
+    mutable size_t wrapCacheTextHash_ = 0;
+    mutable float wrapCacheH_ = 0.0f;
+
+    // SizeHint 宽度侧的同款自校验缓存（MeasureTextWidth 同为全文
+    // IDWriteTextLayout 创建）。measured_ 记录命中时是否有测量上下文，
+    // 兜底估算与精确测量不互串。
+    mutable bool hintCacheValid_ = false;
+    mutable bool hintCacheMeasured_ = false;
+    mutable float hintCacheFixedW_ = -1.0f;
+    mutable float hintCacheFs_ = -1.0f;
+    mutable bool hintCacheBold_ = false;
+    mutable float hintCachePadLR_ = -1.0f;
+    mutable size_t hintCacheTextLen_ = 0;
+    mutable size_t hintCacheTextHash_ = 0;
+    mutable float hintCacheW_ = 0.0f;
 };
 
 // ---- Button ----
