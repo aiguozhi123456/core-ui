@@ -3125,8 +3125,12 @@ void UiWindowImpl::OnMouseWheel(float x, float y, int delta) {
             }
             else if (auto* sv = dynamic_cast<ScrollViewWidget*>(w)) {
                 if (sv->visible) {
+                    // OnMouseWheel already applies the offset via ApplyScrollDelta_
+                    // (shifts rects, no measure pass). DoLayout() here would run
+                    // outside ActiveMeasureContextScope and collapse wrapped label
+                    // heights to one line until the next scoped layout — the
+                    // scroll-jitter / bubble-overlap root cause.
                     handled = sv->OnMouseWheel(e);
-                    if (handled) sv->DoLayout();
                 }
             }
         }

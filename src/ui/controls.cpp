@@ -2435,9 +2435,11 @@ void ScrollViewWidget::DoLayout() {
         if (w->rect.bottom > maxBottom) maxBottom = w->rect.bottom;
         for (auto& c : w->Children()) measure(c.get());
     };
-    // 只 measure 子元素的 bounds，不包含 content_ 自己的 rect.bottom（那是 estimatedH，非真实内容）
+    // 只 measure 子元素的 bounds，不包含 content_ 自己的 rect.bottom（那是 estimatedH，非真实内容）。
+    // 子元素 bounds 不含 content_ 自身的 padB（如 .chat-list 底部 64px 让位
+    // composer 的 padding），必须补上，否则 MaxScrollY 短 padB，最后一段滚不上去。
     for (auto& c : content_->Children()) measure(c.get());
-    contentHeight_ = std::max(maxBottom - viewportTop, visH);
+    contentHeight_ = std::max(maxBottom - viewportTop + content_->padB, visH);
 
 
     // Scrollbar overlays content (absolute positioning, no space reserved)
